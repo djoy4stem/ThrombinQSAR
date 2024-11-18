@@ -1,0 +1,59 @@
+data:
+  full_data_path: data/CHEMBL204_Ki.csv
+  train_path: data/train.csv
+  val_path: data/val.csv
+  test_path: data/test.csv
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  target_col: 'y [pEC50/pKi]'
+
+featurizer_cleaner:
+  path:
+  features:
+  df_func_gps: featurizers.DF_FUNC_GRPS
+  standardizer:
+    type: StandardScaler()
+
+predictor:
+  model:
+    path: models/model_thrombin_inhib_reg.pkl
+training:
+  best_model_path: models/model_thrombin_inhib_reg.pkl
+  direction: minimize
+  models:
+  - model: lightgbm.sklearn.LGBMRegressor
+    params:
+      colsample_bytree:
+      - 0.1
+      - 1
+      importance_type:
+      - gain
+      - split
+      learning_rate:
+      - 0.01
+      - 0.5
+      max_depth:
+      - 2
+      - 50
+      min_child_samples:
+      - 2
+      - 100
+      min_child_weight:
+      - 0.01
+      - 1
+      min_split_gain:
+      - 0.001
+      - 0.1
+      n_estimators:
+      - 5
+      - 100
+      n_jobs: 8
+      num_leaves:
+      - 2
+      - 100
+      random_state: 123
+      subsample:
+      - 0.1
+      - 1.0
+      verbose: -1
