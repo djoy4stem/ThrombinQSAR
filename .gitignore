@@ -9,7 +9,11 @@
 **/.ipynb_checkpoints/**
 lib/__pycache__/**
 
-data/models/*.pkl
+
+mlruns/*
+models/*.pkl
+
+config.yml
 
 # Installer logs
 pip-log.txt
