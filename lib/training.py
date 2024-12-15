@@ -44,10 +44,15 @@ def train_with_optuna(
                     params[param_name] = trial.suggest_categorical(
                         param_name, param_value
                     )
-                    if params[param_name] in ["True", "False"]:
-                        print(f"{params[param_name]} in ['True', 'False']")
-                        params[param_name] = bool(params[param_name])
-                        print(params[param_name].__class__)
+                    
+                    # if param_name == "bootstrap":
+                    #     print(f"{param_name}: {param_name}")
+                    if params[param_name].lower() == 'true':
+                        # print(f"\n\n Instance is str, but it looks like a boolean: {param_value[0]}\n")
+                        params[param_name] = True
+                    elif params[param_name].lower() == 'False':
+                        # print(f"\n\n Instance is str, but it looks like a boolean: {param_value[0]}\n")
+                        params[param_name] = False
 
                 elif isinstance(param_value[0], int):
                     params[param_name] = trial.suggest_int(
@@ -74,7 +79,7 @@ def train_with_optuna(
                 )
             elif isinstance(param_value, str):
                 # print(param_value)
-                if param_value in ["True", "False"]:
+                if param_value[0] in ["True", "False"]:
                     params[param_name] = trial.suggest_categorical(
                         param_name, [bool(param_value)]
                     )
@@ -88,6 +93,8 @@ def train_with_optuna(
                 raise ValueError(
                     f"Unsupported parameter type for param_value ({param_value})."
                 )
+
+        # print(f"\nPARAMS = {params}\n")
         # Instantiate and fit the model
         scores = []
         for i in range(len(train_val_test_data)):
@@ -157,9 +164,14 @@ def train_with_optuna(
 
     # Get the best parameters
     best_params = study.best_params
+    for k in best_params:
+        if best_params[k] in ['True', 'False']:
+            best_params[k] = bool(best_params[k])
+    # print(f"\n\nBEST_PARAMS = {best_params}")
 
     # Train the best model
     best_model = model_params["model"](**best_params)
+    # print("best_model = ", best_model)
     # print(train_val_test_data[0][:2])
     train_val_df = pd.concat(train_val_test_data[0][:2], axis=0)
     best_model.fit(

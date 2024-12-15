@@ -145,10 +145,10 @@ def clean_features(
             #     X=cleaned_features_df[columns_to_scale]))
             if fit_standardizer:
                 fitted_standardizer = copy.deepcopy(standardizer)
-                # print(f"1) FITTED ST: {fitted_standardizer}")
+                print(f"1) FITTED ST: {fitted_standardizer}")
                 fitted_standardizer.fit(
                     X=cleaned_features_df[columns_to_scale])
-                # print(f"2) FITTED ST: {fitted_standardizer}")
+                print(f"2) FITTED ST: {fitted_standardizer}  --  {fitted_standardizer is None} - has 'mean_' attribute: {hasattr(fitted_standardizer, 'mean_')}")
                 cleaned_features_df[columns_to_scale] = fitted_standardizer.transform(
                     X=cleaned_features_df[columns_to_scale]
                 )
@@ -160,7 +160,7 @@ def clean_features(
     cleaned_features_df.dropna(axis=0, inplace=True)
 
     if not fit_standardizer:
-        return cleaned_features_df
+        return cleaned_features_df, None
     else:
         return cleaned_features_df, fitted_standardizer
 

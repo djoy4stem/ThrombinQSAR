@@ -6,19 +6,33 @@ import pandas as pd
 import numpy as np
 from typing import Union, List
 import pickle
-import yaml 
-from lib import preprocessing, splitters, featurizers, utilities, training
+import yaml
+import warnings 
 
-from rdkit.Chem import PandasTools, AllChem, MolToSmiles
+
+from rdkit.Chem import PandasTools, AllChem, MolToSmiles, MolFromSmiles
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+from sklearn.ensemble import RandomForestRegressor
 
 import lightgbm
 from lightgbm import LGBMRegressor
+
+# import mlflow
+# import mlflow.sklearn
+# import mlflow.pyfunc
+
+from lib import preprocessing, splitters, featurizers, utilities, training
+
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent.parent
 print("BASE_DIR", BASE_DIR)
 CONFIG_PATH_ = os.path.join(BASE_DIR, "data/config.yml")      
 print("CONFIG_PATH_", CONFIG_PATH_)
+
+
+
+
 
 def process_molecule(molecule: AllChem.Mol):
     try:
@@ -107,8 +121,9 @@ class DataAcquisition():
         self.fc_object = None
         self.fc_object_path = None
         self.root_path = self.config.get('root_path', None)
-
+        
         # print(f"self.config = {self.config}")
+
         ## Get featurizerCleaner
         path_ = self.config['featurizer_cleaner']['path']
         # print("path=", path_)
@@ -119,8 +134,11 @@ class DataAcquisition():
                 raise ValueError(f"The path provided for the featuizer_cleaner does not exist: {path_}")
             else:
                 self.fc_object = utilities.get_from_pkl(path_)
+                self.fc_object_path = path_
+                # print(f"\n\n******************************I have loaded the already fitted feature_scaler: {self.fc_object.standardizer.mean_}\n\n")
         
         # print("self.root_path", self.root_path)
+        print("\n\nself.fc_object_path", self.fc_object_path)
         if self.fc_object_path is None:
             standardizer   = None           
             if self.root_path is None:
@@ -149,7 +167,8 @@ class DataAcquisition():
             self.fc_object = FeaturizingAndCleaningObject(config_path=None, mol_featurizer = mol_featurizer
                                                                 , standardizer = standardizer
                                                             )
-            # print(f"self.fc_object.standardizer({self.fc_object.standardizer.__class__}) = {standardizer}")
+            # print(f"\n\n\n\nself.fc_object.standardizer({self.fc_object.standardizer.__class__}) = {standardizer}")
+            # print(f"Is self.fc_object.standardizer fitted? {hasattr(self.fc_object.standardizer, 'mean_')}\n\n")
             # print("self.fc_object_path", self.fc_object_path is None)
             utilities.save_to_pkl(self.fc_object, self.fc_object_path)
             
@@ -182,9 +201,9 @@ class DataAcquisition():
 
     def get_data(self, keep_molecules=True, molecule_column = 'RMol'):
         
-        train_fname = self.config['data']['train_path']
-        val_fname   = self.config['data']['val_path']
-        test_fname  = self.config['data']['test_path']
+        train_fname     = self.config['data']['train_path']
+        val_fname       = self.config['data']['val_path']
+        test_fname      = self.config['data']['test_path']
         full_data_fname = self.config['data']['full_data_path']
         smiles_column   = self.config['data']['smiles_col']
 
@@ -195,7 +214,7 @@ class DataAcquisition():
 
             
             print("\nData sets are not available and will be generated...\n")
-            full_df = pd.read_csv(full_data_fname).iloc[:,:]
+            full_df = pd.read_csv(full_data_fname).iloc[:100,:]
             PandasTools.AddMoleculeColumnToFrame(frame=full_df, smilesCol=smiles_column, molCol=molecule_column)
 
             # print(full_df.shape)
@@ -209,7 +228,7 @@ class DataAcquisition():
             # train = full_df[full_df['split']=='train']
 
             # print(val[molecule_column].apply(MolToSmiles).tolist())
-            print(f"\nGet Data: self.fc_object.standardizer: {self.fc_object.standardizer}\n")
+            # print(f"\nGet Data: self.fc_object.standardizer: {self.fc_object.standardizer}\n")
             train, val, test = self.fc_object.featurize_and_fix_datasets(train_df=train
                                                                 , val_df=val, test_df=test
                                                                 , target_col=self.target_col
@@ -246,13 +265,11 @@ class FeaturizingAndCleaningObject():
             self.all_features   = kwargs.get('all_features', None)
             self.fc_object_path  = 'models/featurizer_cleaner.pkl'
             self.root_path = BASE_DIR
-            # print("BLABLA")
         else:
-            # print("BLABLA BLA")
             assert (not config_path is None) and (os.path.exists(config_path)), "Provide a valid path fir the config file."
 
             config = utilities.load_yaml_to_dict(config_path)
-            print("config", config)
+            # print("config", config)
             assert hasattr(config, 'featurizer_cleaner'), "No featurizer_cleaner configuration was provided. Please provide a valid one."
 
             self.config_path    = config_path
@@ -316,14 +333,16 @@ class FeaturizingAndCleaningObject():
         if standardizer is None:
             standardizer = self.standardizer
 
-        print(f"===> {standardizer}")
+        # print(f"===> {standardizer}")
         frame_w_props = featurize_molecules(molecules=frame, count_unique_bits=True
                                             , append=False, mol_col=mol_column
                                             , mol_featurizer = self.mol_featurizer
                                             , keep_features_only=True   
                                         )
 
-        # print("frame columns", frame.columns)
+        # print(f"\nframe columns ({len(frame_w_props.columns)}) = {frame_w_props.columns.tolist()}")
+        # print("\nself.all_features = ", self.all_features)
+
         if not self.all_features is None:
             # print(f"\n\nself.all_features = {self.all_features}")
             # print([x for x in self.all_features if not x in frame.columns])
@@ -335,7 +354,7 @@ class FeaturizingAndCleaningObject():
 
         fitted_standardizer = None
         if not fit_standardizer:
-            frame_w_props = preprocessing.clean_features(features_df=frame_w_props,
+            frame_w_props, _ = preprocessing.clean_features(features_df=frame_w_props,
                                                             columns_to_clean=columns_to_clean,
                                                             columns_to_scale=columns_to_scale,
                                                             standardizer=standardizer,
@@ -352,22 +371,32 @@ class FeaturizingAndCleaningObject():
                                                             strategy_cat="most_frequent",
                                                             fit_standardizer=fit_standardizer
                                                         )
+        if self.all_features is None:
+            print("\n\=========> Assiging all_features\n")
+            # self.all_features = frame_w_props.columns.difference([target_col]).tolist()
+            self.all_features = fitted_standardizer.get_feature_names_out()
+            print(f"self.all_features: {self.all_features}\n\n\n\n")
+            print("\n\nJust fitted a standardizer.\n")
+
+
+
         # print("\n\n", frame_w_props.iloc[:5, :5])
         if not target_col is None:
             frame_w_props[target_col] = frame[target_col]
 
         # print(f"\n\n{frame_w_props.head(5)}\n\n")
-        if self.all_features is None:
-            # print("\n\=========> Assiging all_features\n")
-            self.all_features = frame_w_props.columns.difference([target_col]).tolist()
 
         if not save_to is None:
             frame_w_props.to_csv(save_to)
 
+
+        # print(f"\n1) problematic cols: {[c for c in frame_w_props.columns if not c in self.all_features]}")
+        # print(f"2) problematic cols: {[c for c in self.all_features if not c in frame_w_props.columns]}")
+
         if not fit_standardizer:
             return frame_w_props
         else:
-            return frame_w_props, fit_standardizer
+            return frame_w_props, fitted_standardizer
 
     def featurize_and_fix_datasets(self, train_df, val_df, test_df, target_col, mol_column='RMol'
                                     , train_fname=None, val_fname=None
@@ -376,7 +405,7 @@ class FeaturizingAndCleaningObject():
                                 ):
 
         print("\nfeaturize and clean train dataset")
-        print(f"featurize_and_fix_datasets: {self.standardizer} - {self.standardizer.__class__}")
+        # print(f"featurize_and_fix_datasets: {self.standardizer} - {self.standardizer.__class__}")
         # print(f"\n{self.standardizer}\ncopy.deepcopy(self.standardizer) : {copy.deepcopy(self.standardizer).__class__} - {copy.deepcopy(self.standardizer)}")
         scaler_copy = copy.deepcopy(self.standardizer)
         train, fitted_standardizer =  self.featurize_and_fix(frame=train_df, target_col=target_col, mol_column=mol_column, save_to=train_fname
@@ -396,7 +425,7 @@ class FeaturizingAndCleaningObject():
                             , standardizer = self.standardizer, fit_standardizer = True
                             )                            
 
-        print(f"fitted_standardizer = {fitted_standardizer}")
+        print(f"fitted_standardizer = {fitted_standardizer} \nis it fitted? {hasattr(fitted_standardizer, 'mean_')}")
         ## saving the fc object with a standardizer fitted with the training data
         self.standardizer = fitted_standardizer
         utilities.save_to_pkl(self, self.fc_object_path)
@@ -419,15 +448,20 @@ class Trainer():
     def __init__(self, config_path=CONFIG_PATH_):
         
         config          = utilities.load_yaml_to_dict(config_path)
-        print("\n*** config", config.keys())
+        # print("\n*** config", config.keys())
         # assert hasattr(config, 'training'), "No training configuration was provided. Please provide a valid one."
         # assert hasattr(config, 'direction'), "No direction was provided. Please provide a valid one."
-
+        
+        self.root_path = config.get('root_path', BASE_DIR)
         self.config_path = config_path
         self.config     = config
-        self.best_model_path = config['training'].get('best_model_path', 'models/model_thrombin_inhib_reg.pkl')
+
+        self.best_model_path = config['training'].get('best_model_path', None) or os.path.join(self.root_path, 'models/model_thrombin_inhib_reg.pkl')
+        self.config['training']['best_model_path']     = self.best_model_path
+        # print("self.best_model_path", self.best_model_path)
+
         self.direction  = self.config['training']['direction']
-        self.root_path = config.get('root_path', BASE_DIR)
+        
 
         self.data       = config['data']
         self.target_col = config['data']['target_col']     
@@ -436,7 +470,7 @@ class Trainer():
         
         # print("self.config['training']['models']", self.config['training']['models'])
         self.clean_model_params()
-        print("\n\nAfter cleaning: self.config['training']['models']", self.config['training']['models'])
+        # print("\n\nAfter cleaning: self.config['training']['models']", self.config['training']['models'])
         # print("\n*****\n",self.config['training']['models'][0])
         # print(f"eval: {eval(self.config['training']['models'][0])}")
     
@@ -444,7 +478,7 @@ class Trainer():
         for i in range(len(self.config['training']['models'])):
             self.config['training']['models'][i]['model'] = eval(self.config['training']['models'][i]['model'])
             for x in self.config['training']['models'][i]['params']:
-                print(f"\t{x} : {self.config['training']['models'][i]['params'][x]}")
+                # print(f"\t{x} : {self.config['training']['models'][i]['params'][x]}")
                 try:
                     self.config['training']['models'][i]['params'][x] = eval(self.config['training']['models'][i]['params'][x])
                 except:
@@ -458,7 +492,7 @@ class Trainer():
                 num_trials:int=50,
                 standardize:bool=False,
                 n_jobs:int=1,
-                save_best_model_=True):
+                save_best_model_:bool=True):
 
         # if model_param_list is None:
         #     model_param_list = self.config['training']['models']
@@ -486,26 +520,40 @@ class Trainer():
                     scoring_function=scoring_function, direction=self.direction, num_trials=num_trials, standardize=standardize, n_jobs=n_jobs
                 )
             self.best_results.append({"model_type": best_model.__class__.__name__, "best_model":best_model, 
-                                        "best_params": best_params, "best_value": best_value})
-
+                                        "best_params": best_params, "best_value": best_value, "scoring_function":scoring_function})
+            
             self.config['training']['models'][j]['model'] = best_model.__class__.__name__
+
         if save_best_model_:
             self.save_best_model()
 
+        return self.get_best_model()
 
-    def save_best_model(self):
+    def get_best_model(self):
         assert len(self.best_results)>0, "There are no saved training results. Models must be trained first."
         best_ = None
         if self.direction == 'minimize':
             best_ = min(self.best_results, key=lambda d: d["best_value"])
         elif self.direction == 'maximize':
             best_ = min(self.best_results, key=lambda d: d["best_value"])
+
+        return best_
+
+    def save_best_model(self):
+        best_ = self.get_best_model()
         
+        # ## track metrics
+        # for param in best_["best_params"]:
+        #     print(f"saving best {param}", best_["best_params"][param])
+        #     mlflow.log_param(f"{param}",  best_["best_params"][param])
+        
+        # mflow.log_metric(f"{best_['scoring_function']}_val", best_['best_value'])
+
         print("\nSaving best model...")
         try:
             utilities.save_to_pkl(best_["best_model"], self.best_model_path)
         except:
-            utilities.save_to_pkl(best_["best_model"], os.path.join(self.root_path, self.best_model_path))
+            utilities.save_to_pkl(best_["best_model"], self.best_model_path)
 
         if not hasattr(self.config, 'predictor'):
             self.config['predictor'] = {'model':{'path': self.best_model_path}}
@@ -516,25 +564,73 @@ class Trainer():
         utilities.save_dict_to_yaml(self.config, self.config_path)
 
 
-class Predictor():
+class ThrombinQSARModel():
     def __init__(self, config_path=CONFIG_PATH_):
         self.config_path = config_path 
         config = utilities.load_yaml_to_dict(config_path)
-        self.config = config['predictor']
+        self.config     = config['predictor']
+        self.test_data  = config['data'].get('test_path', None)
+        self.target_col = config['data']['target_col']
+
+        ## load featurizer_cleaner
+        
         self.featurizer_cleaner = utilities.get_from_pkl(config['featurizer_cleaner']['path'])
+        # print(f"featurizer_cleaner = ", self.featurizer_cleaner)
+        # print("featurizer_cleaner", hasattr(self.featurizer_cleaner, "mean_"))
+
+        ## load model
+        model_path = self.config['model'].get('path', None)
+        if model_path is None:
+            warnings.warn("There is no model. One must me trained.")
+            self.model = None
+        else:
+            self.model = utilities.get_from_pkl(self.config['model']['path'])
+
+    def update_(self):
+        config = utilities.load_yaml_to_dict(self.config_path)
+        self.config = config['predictor']
+        print("self.config['model']", self.config['model'])
         self.model = utilities.get_from_pkl(self.config['model']['path'])
-        self.target = config['data']['target_col']
+
+
+    def train(self,               
+                scoring_function,
+                trainer:Trainer=None,
+                train_val_test_data:list=None,                                      
+                # model_param_list: list = None,
+                num_trials:int=50,                
+                standardize:bool=False,
+                n_jobs:int=1,
+                save_best_model_:bool=True):
+
+        if trainer is None:
+            trainer = Trainer(config_path=CONFIG_PATH_)
+
+        trainer.train(
+                        scoring_function=scoring_function,
+                        train_val_test_data=train_val_test_data,                                      
+                        num_trials=num_trials,                
+                        standardize=standardize,
+                        n_jobs=n_jobs,
+                        save_best_model_=save_best_model_
+                    )
+
+        self.update_()
+
+
 
     def featurize_and_predict_from_mols(self, molecules_df: pd.DataFrame, mol_col="Mol"):
 
         ##Featurize and clean
         mol_features = self.featurizer_cleaner.featurize_and_fix(frame=molecules_df, target_col=None
-                            , mol_column=mol_col, save_to=None
-                            , columns_to_clean=None, columns_to_scale=None
+                            , mol_column=mol_col, fit_standardizer=False, save_to=None
+                            , columns_to_clean=None, columns_to_scale=self.featurizer_cleaner.all_features
                             )
         
         ## predict
-        mol_features[self.target] =  self.model.predict(X=mol_features)
+        # print(molecules_df.head(3))
+        # print(self.model.predict(X=mol_features))
+        molecules_df[self.target_col] =  self.model.predict(X=mol_features)
         
 
         return molecules_df
@@ -544,29 +640,48 @@ class Predictor():
         smiles_col: str = "SMILES",
         **kwargs,
     ):
-
+        # if True:
         try:
             if isinstance(smiles, (List, np.ndarray)):
                 molecules = pd.DataFrame(
                     [MolFromSmiles(smi) for smi in smiles], columns=["Mol"]
                 )
-                return featurize_and_predict_from_mols(
+
+                preds = pd.DataFrame(smiles, columns=["SMILES"])
+                preds = pd.concat([preds, self.featurize_and_predict_from_mols(
                     molecules_df=molecules, mol_col="Mol"
-                ).drop([mol_col], axis=1)
+                ).drop(["Mol"], axis=1)], axis=1)
+
+                return preds
 
             elif isinstance(smiles, pd.DataFrame):
                 mol_col = kwargs.get("mol_col", None) or "Mol"
                 PandasTools.AddMoleculeColumnToFrame(
                     smiles, smilesCol=smiles_col, molCol=mol_col
                 )
-
-                return self.featurize_and_predict_from_mols(
+                preds = pd.DataFrame(smiles, columns=["SMILES"])
+                preds = preds = pd.concat([preds, self.featurize_and_predict_from_mols(
                     molecules_df=smiles, mol_col=mol_col
-                ).drop([mol_col], axis=1)
+                ).drop([mol_col], axis=1)], axis=1)
+
+                return preds
 
         except Exception as exp:
-            print(f"Failed to predict {self.target} .\n\t{exp}")
+            print(f"Failed to predict {self.target_col} .\n\t{exp}")
 
+
+    def evaluate_model(dframe: pd.DataFrame=None, scoring_function= mean_squared_error):
+        
+        if dframe is None:
+            dframe = pd.read_csv(self.test_data)
+        
+        assert not dframe is None, "Could not find a file for evaluation. Provide a non-null .csv file."
+        assert self.target_col in dframe.columns.tolist(), f"The target column '{self.target_col}' is missing in the test file."
+        
+        predictions = self.model.predict(dframe[dframe.columns.difference([self.target_col])])
+        score       = mean_squared_error(predictions, dframe[self.target_col])
+
+        print(f"{scoring_function.__name__} = {round(score, 3)}")
 
 
 
