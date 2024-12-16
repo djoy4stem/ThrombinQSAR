@@ -8,23 +8,23 @@ This is project that illustrates end-to-end development of a Thrombin inhibiton 
 
 ## Installation
 
-1. Create a conda environment *conda create -n qsar_mlops python=3.10*
+1. Create a conda environment *conda create -n thrombin python=3.10*
 2. Install required packages by running *pip install -r requirements.txt*
 3. 
 
 
 
-## Model Training
-
-## Model Validation
+## Model Training, and validation
+Run the main app for data acquisition/preprocessing,  and model training/evaluation/registration
+   1. *python main.py*
 
 ## Model Deployment
 
 
-SEcurity Group on EC2: Djoy4StemGroup
+<!-- SEcurity Group on EC2: Djoy4StemGroup
 ECS cluster: https://us-east-2.console.aws.amazon.com/ecs/v2/clusters/my_fastapi_djoy4stem/services?region=us-east-2
 task name: my_fastapi_task1
 Service name: my_fastapi_task1
 
 
-https://www.evidentlyai.com/blog/mlops-monitoring
+https://www.evidentlyai.com/blog/mlops-monitoring -->

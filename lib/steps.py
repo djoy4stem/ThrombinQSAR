@@ -635,7 +635,41 @@ class ThrombinQSARModel():
 
         return molecules_df
 
-    def featurize_and_predict_from_smiles(self, 
+    # def featurize_and_predict_from_smiles(self, 
+    #     smiles: Union[List[AllChem.Mol], np.ndarray, pd.DataFrame],
+    #     smiles_col: str = "SMILES",
+    #     **kwargs,
+    # ):
+    #     # if True:
+    #     try:
+    #         if isinstance(smiles, (List, np.ndarray)):
+    #             molecules = pd.DataFrame(
+    #                 [MolFromSmiles(smi) for smi in smiles], columns=["Mol"]
+    #             )
+
+    #             preds = pd.DataFrame(smiles, columns=["SMILES"])
+    #             preds = pd.concat([preds, self.featurize_and_predict_from_mols(
+    #                 molecules_df=molecules, mol_col="Mol"
+    #             ).drop(["Mol"], axis=1)], axis=1)
+
+    #             return preds
+
+    #         elif isinstance(smiles, pd.DataFrame):
+    #             mol_col = kwargs.get("mol_col", None) or "Mol"
+    #             PandasTools.AddMoleculeColumnToFrame(
+    #                 smiles, smilesCol=smiles_col, molCol=mol_col
+    #             )
+    #             preds = pd.DataFrame(smiles, columns=["SMILES"])
+    #             preds = preds = pd.concat([preds, self.featurize_and_predict_from_mols(
+    #                 molecules_df=smiles, mol_col=mol_col
+    #             ).drop([mol_col], axis=1)], axis=1)
+
+    #             return preds
+
+    #     except Exception as exp:
+    #         print(f"Failed to predict {self.target_col} .\n\t{exp}")
+
+    def predict(self, 
         smiles: Union[List[AllChem.Mol], np.ndarray, pd.DataFrame],
         smiles_col: str = "SMILES",
         **kwargs,
